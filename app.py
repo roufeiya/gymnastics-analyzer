@@ -6,9 +6,7 @@ import mediapipe as mp
 from PIL import ImageFont, ImageDraw, Image
 
 # --- ПУТЬ К ШРИФТУ ---
-# Теперь мы ищем шрифт, который загрузили в ту же папку
-FONT_PATH = 'Verdana.ttf' 
-# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+FONT_PATH = 'Verdana.ttf' # Ищем шрифт в той же папке
 
 font_trick = ImageFont.truetype(FONT_PATH, 36)
 font_score = ImageFont.truetype(FONT_PATH, 30)
@@ -48,19 +46,17 @@ def process_video(video_file, settings):
 
     # --- НОВЫЕ ПОРОГИ ДЛЯ ГРАДУИРОВАННОЙ ОЦЕНКИ ---
     # Шпагат (Зачет / Хорошо / Идеально)
-    SPLIT_THRESHOLD_GOOD = SPLIT_THRESHOLD_MIN + 5  # e.g., 160 -> 165
-    SPLIT_THRESHOLD_PERFECT = SPLIT_THRESHOLD_MIN + 10 # e.g., 160 -> 170
+    SPLIT_THRESHOLD_GOOD = SPLIT_THRESHOLD_MIN + 5
+    SPLIT_THRESHOLD_PERFECT = SPLIT_THRESHOLD_MIN + 10
     
     # Ласточка (Зачет / Хорошо / Идеально)
-    ARABESQUE_THRESHOLD_GOOD = ARABESQUE_THRESHOLD_MIN + 10 # e.g., 45 -> 55
-    ARABESQUE_THRESHOLD_PERFECT = ARABESQUE_THRESHOLD_MIN + 20 # e.g., 45 -> 65
+    ARABESQUE_THRESHOLD_GOOD = ARABESQUE_THRESHOLD_MIN + 10
+    ARABESQUE_THRESHOLD_PERFECT = ARABESQUE_THRESHOLD_MIN + 20
 
     # --- Переменные для баллов и счетчиков ---
     total_score = 0
-    # --- НОВЫЙ ЖУРНАЛ (ЛОГ) ПРОТОКОЛА ---
     protocol_entries = [] # Здесь будем хранить все засчитанные трюки
     
-    # (Флаги и счетчики кадров остаются)
     split_in_progress = False
     leg_lift_in_progress = False
     ring_in_progress = False
@@ -87,7 +83,6 @@ def process_video(video_file, settings):
             if not ret:
                 break
             
-            # --- НОВОЕ: Получаем текущее время видео ---
             current_time_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
             current_time_str = format_time(current_time_msec)
             
@@ -102,7 +97,6 @@ def process_video(video_file, settings):
             try:
                 landmarks = results.pose_landmarks.landmark
                 
-                # --- Получаем точки (без изменений) ---
                 left_hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
                 left_ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
                 left_shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
@@ -113,7 +107,6 @@ def process_video(video_file, settings):
                 right_knee = [landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].y]
                 nose_pos = [landmarks[mp_pose.PoseLandmark.NOSE.value].x, landmarks[mp_pose.PoseLandmark.NOSE.value].y]
 
-                # --- Расчеты углов (без изменений) ---
                 pelvis_center = np.mean([left_hip, right_hip], axis=0)
                 split_angle = calculate_angle(left_ankle, pelvis_center, right_ankle)
                 left_leg_lift_angle = calculate_angle(left_shoulder, left_hip, left_knee)
@@ -124,7 +117,6 @@ def process_video(video_file, settings):
                 arabesque_angle_left_support = calculate_angle(left_shoulder, left_hip, right_ankle)
                 arabesque_angle_right_support = calculate_angle(right_shoulder, right_hip, left_ankle)
                 
-                # --- Условия для трюков (без изменений) ---
                 is_left_leg_lifted = (left_leg_lift_angle < LEG_LIFT_THRESHOLD_ANGLE and left_knee_angle > KNEE_STRAIGHT_ANGLE)
                 is_right_leg_lifted = (right_leg_lift_angle < LEG_LIFT_THRESHOLD_ANGLE and right_knee_angle > KNEE_STRAIGHT_ANGLE)
                 is_left_support_arabesque = (left_knee_angle > KNEE_STRAIGHT_ANGLE and right_knee_angle > KNEE_STRAIGHT_ANGLE and arabesque_angle_left_support > ARABESQUE_THRESHOLD_MIN)
@@ -138,7 +130,6 @@ def process_video(video_file, settings):
                         split_hold_frames += 1
                         trick_text = f"ШПАГАТ! (Держать... {split_hold_frames}/{FRAMES_TO_HOLD})"
                         if split_hold_frames >= FRAMES_TO_HOLD:
-                            # --- Логика Градуированной Оценки ---
                             if split_angle > SPLIT_THRESHOLD_PERFECT:
                                 score, label = 10, "ИДЕАЛЬНЫЙ ШПАГАТ"
                             elif split_angle > SPLIT_THRESHOLD_GOOD:
@@ -169,7 +160,6 @@ def process_video(video_file, settings):
                         arabesque_hold_frames += 1
                         trick_text = f"ЛАСТОЧКА! (Держать... {arabesque_hold_frames}/{FRAMES_TO_HOLD})"
                         if arabesque_hold_frames >= FRAMES_TO_HOLD:
-                            # --- Логика Градуированной Оценки ---
                             current_arabesque_angle = max(arabesque_angle_left_support, arabesque_angle_right_support)
                             if current_arabesque_angle > ARABESQUE_THRESHOLD_PERFECT:
                                 score, label = 8, "ИДЕАЛЬНАЯ ЛАСТОЧКА"
@@ -215,7 +205,6 @@ def process_video(video_file, settings):
             draw = ImageDraw.Draw(pil_image)
             if trick_text:
                 draw.text((50, 50), trick_text, font=font_trick, fill=(0, 255, 0))
-            # Отображаем текущее время и баллы
             draw.text((50, 100), f"ВРЕМЯ: {current_time_str} | ИТОГО БАЛЛОВ: {total_score}", font=font_score, fill=(255, 255, 0))
             image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR) 
 
@@ -223,20 +212,19 @@ def process_video(video_file, settings):
 
         cap.release()
         
-        # --- ОБНОВЛЕНО: Финальный отчет ---
+        # --- Финальный отчет ---
         st.success(f"Обработка завершена! Итоговый счет: {total_score} баллов.")
         st.balloons() 
         
         st.subheader("📝 Детальный Протокол (Лог)")
         
-        # Выводим каждую запись из журнала
         if not protocol_entries:
             st.warning("Ни одного трюка не засчитано.")
         else:
             for entry in protocol_entries:
                 st.write(entry)
         
-        # --- ОБНОВЛЕНО: КНОПКА СКАЧИВАНИЯ ---
+        # --- КНОПКА СКАЧИВАНИЯ ---
         report_text = f"""
         ==================================
         ФИНАЛЬНЫЙ ПРОТОКОЛ АНАЛИЗА
@@ -246,9 +234,8 @@ def process_video(video_file, settings):
         
         --- Детальный Лог Трюков ---
         """
-        # Добавляем записи из журнала в текстовый файл
         if not protocol_entries:
-            report_text += "\nНи одного тка не засчитано."
+            report_text += "\nНи одного трюка не засчитано."
         else:
             for entry in protocol_entries:
                 report_text += f"\n{entry}"
@@ -269,7 +256,7 @@ def process_video(video_file, settings):
             file_name="gymnastics_report.txt",
             mime="text/plain"
         )
-        # --- КОНЕЦ ОБНОВЛЕНИЙ ---
+        # --- КОНЕЦ ---
 
 
 # --- КОД "САЙТА" (Streamlit) ---
@@ -285,7 +272,7 @@ hold_frames = st.sidebar.slider(
     min_value=5, max_value=60, value=10
 )
 split_angle = st.sidebar.slider(
-    "Мин. 'Зачет' для шпагата (градусы):", # <-- Текст изменен
+    "Мин. 'Зачет' для шпагата (градусы):",
     min_value=150, max_value=180, value=160
 )
 knee_angle = st.sidebar.slider(
@@ -293,7 +280,7 @@ knee_angle = st.sidebar.slider(
     min_value=150, max_value=180, value=165
 )
 arabesque_angle = st.sidebar.slider(
-    "Мин. 'Зачет' для 'Ласточки' (градусы):", # <-- Текст изменен
+    "Мин. 'Зачет' для 'Ласточки' (градусы):",
     min_value=30, max_value=90, value=45
 )
 
@@ -306,7 +293,9 @@ settings = {
 
 st.write("Загрузите видео с выступлением, и нейросеть оценит трюки.")
 
-uploaded_file = st.file_uploader("Выберите видео-файл", type=["mp4", "mov",avi"])
+# --- ИСПРАВЛЕННАЯ СТРОКА ---
+uploaded_file = st.file_uploader("Выберите видео-файл", type=["mp4", "mov", "avi"])
+# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
 if uploaded_file is not None:
     st.video(uploaded_file)
