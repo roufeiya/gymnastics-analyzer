@@ -6,9 +6,7 @@ import mediapipe as mp
 from PIL import ImageFont, ImageDraw, Image
 
 # --- ПУТЬ К ШРИФТУ ---
-# Ищем ТОЧНОЕ имя файла, которое вы загрузили
 FONT_PATH = 'VERDANA.TTF' 
-# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
 font_trick = ImageFont.truetype(FONT_PATH, 36)
 font_score = ImageFont.truetype(FONT_PATH, 30)
@@ -27,9 +25,7 @@ def calculate_angle(a, b, c):
 def calculate_distance(point1, point2):
     return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
 
-# --- НОВАЯ ФУНКЦИЯ: Форматирование времени ---
 def format_time(milliseconds):
-    """Конвертирует миллисекунды (float) в строку 'ММ:СС'"""
     total_seconds = int(milliseconds / 1000)
     minutes = total_seconds // 60
     seconds = total_seconds % 60
@@ -38,7 +34,7 @@ def format_time(milliseconds):
 # --- Наша главная функция обработки ---
 def process_video(video_file, settings):
     
-    # --- Используем настройки со слайдеров (это МИНИМАЛЬНЫЕ пороги) ---
+    # --- Настройки со слайдеров ---
     SPLIT_THRESHOLD_MIN = settings["split_angle"]
     LEG_LIFT_THRESHOLD_ANGLE = 100 
     RING_THRESHOLD_DISTANCE = 0.12 
@@ -46,18 +42,15 @@ def process_video(video_file, settings):
     FRAMES_TO_HOLD = settings["hold_frames"]
     ARABESQUE_THRESHOLD_MIN = settings["arabesque_angle"]
 
-    # --- НОВЫЕ ПОРОГИ ДЛЯ ГРАДУИРОВАННОЙ ОЦЕНКИ ---
-    # Шпагат (Зачет / Хорошо / Идеально)
+    # --- Пороги для градуированной оценки ---
     SPLIT_THRESHOLD_GOOD = SPLIT_THRESHOLD_MIN + 5
     SPLIT_THRESHOLD_PERFECT = SPLIT_THRESHOLD_MIN + 10
-    
-    # Ласточка (Зачет / Хорошо / Идеально)
     ARABESQUE_THRESHOLD_GOOD = ARABESQUE_THRESHOLD_MIN + 10
     ARABESQUE_THRESHOLD_PERFECT = ARABESQUE_THRESHOLD_MIN + 20
 
-    # --- Переменные для баллов и счетчиков ---
+    # --- Переменные ---
     total_score = 0
-    protocol_entries = [] # Здесь будем хранить все засчитанные трюки
+    protocol_entries = [] 
     
     split_in_progress = False
     leg_lift_in_progress = False
@@ -77,6 +70,16 @@ def process_video(video_file, settings):
         video_path = tfile.name
 
     cap = cv2.VideoCapture(video_path)
+    
+    # --- НОВЫЙ БЛОК: ИНДИКАТОР ВЫПОЛНЕНИЯ ---
+    # 1. Получаем общее количество кадров в видео
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    current_frame = 0
+    # 2. Создаем "пустой" индикатор
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
+    # --- КОНЕЦ НОВОГО БЛОКА ---
+    
     st_frame = st.empty()
 
     with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
@@ -84,6 +87,13 @@ def process_video(video_file, settings):
             ret, frame = cap.read()
             if not ret:
                 break
+                
+            # --- ОБНОВЛЯЕМ ИНДИКАТОР ---
+            current_frame += 1
+            progress_percent = int((current_frame / total_frames) * 100)
+            progress_text.text(f"Идет обработка... Кадр {current_frame}/{total_frames} ({progress_percent}%)")
+            progress_bar.progress(progress_percent)
+            # --- КОНЕЦ ОБНОВЛЕНИЯ ---
             
             current_time_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
             current_time_str = format_time(current_time_msec)
@@ -201,7 +211,6 @@ def process_video(video_file, settings):
             except Exception as e:
                 pass 
             
-            # --- Отрисовка (без изменений) ---
             mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_image)
@@ -213,6 +222,10 @@ def process_video(video_file, settings):
             st_frame.image(image, channels="BGR", use_container_width=True)
 
         cap.release()
+        
+        # --- Очищаем индикатор выполнения ---
+        progress_text.empty()
+        progress_bar.empty()
         
         # --- Финальный отчет ---
         st.success(f"Обработка завершена! Итоговый счет: {total_score} баллов.")
@@ -301,5 +314,8 @@ if uploaded_file is not None:
     st.video(uploaded_file)
     
     if st.button("Начать анализ"):
+        # Удаляем старый отчет, если он был
+        st.empty() 
+        
         st.info("Идет обработка... Это может занять некоторое время.")
         process_video(uploaded_file, settings)
