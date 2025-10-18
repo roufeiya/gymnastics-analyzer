@@ -30,16 +30,17 @@ def format_time(milliseconds):
     return f"{minutes:02d}:{seconds:02d}"
 
 # --- 2. НАША ГЛАВНАЯ ФУНКЦИЯ ОБРАБОТКИ ---
-# (Она больше не принимает 'settings')
 def process_video(video_file): 
+    
+    # --- НОВЫЙ БЛОК: "ПЕРИОД ОХЛАЖДЕНИЯ" ---
+    # Не начислять баллы в течение N кадров после трюка
+    COOLDOWN_FRAMES = 30 # (30 кадров = ~1 секунда)
+    frames_since_last_score = COOLDOWN_FRAMES # (Начинаем с > 30, чтобы можно было сразу засчитать)
+    # --- КОНЕЦ НОВОГО БЛОКА ---
     
     # --- Переменные ---
     total_score = 0
     protocol_entries = [] 
-    
-    # Флаг, чтобы не давать баллы за один и тот же трюк несколько кадров подряд
-    trick_just_scored = False 
-    last_scored_pose = "other"
 
     # Очки за трюки
     SCORES = {
@@ -57,7 +58,7 @@ def process_video(video_file):
         "other": ""
     }
     
-    # --- Читаем видео из байтов, переданных Streamlit ---
+    # --- Читаем видео из байтов ---
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_file)
     video_path = tfile.name
@@ -78,6 +79,9 @@ def process_video(video_file):
             if not ret:
                 break
                 
+            # --- ОБНОВЛЕНО: Увеличиваем счетчик "охлаждения" ---
+            frames_since_last_score += 1
+            
             # Обновляем индикатор
             current_frame += 1
             if total_frames > 0:
@@ -109,10 +113,13 @@ def process_video(video_file):
                 prediction = model.predict([pose_landmarks_list])
                 current_pose = prediction[0] 
                 
-                # --- ЛОГИКА ОЦЕНКИ (Без удержания) ---
+                # --- ОБНОВЛЕНО: ЛОГИКА ОЦЕНКИ (С "ОХЛАЖДЕНИЕМ") ---
                 
                 if current_pose != "other":
-                    if not trick_just_scored or current_pose != last_scored_pose:
+                    # Если ИИ увидел трюк
+                    
+                    # Проверяем, прошло ли "охлаждение"
+                    if frames_since_last_score > COOLDOWN_FRAMES:
                         score = SCORES[current_pose]
                         label = POSE_NAMES_RU[current_pose]
                         
@@ -120,15 +127,11 @@ def process_video(video_file):
                         trick_text = f"{label}! +{score} БАЛЛОВ"
                         protocol_entries.append(f"{current_time_str} - {label} (+{score}б)")
                         
-                        trick_just_scored = True 
-                        last_scored_pose = current_pose
-                else:
-                    trick_just_scored = False
-                    last_scored_pose = "other"
+                        # СБРАСЫВАЕМ СЧЕТЧИК
+                        frames_since_last_score = 0 
+                # --- КОНЕЦ ИЗМЕНЕНИЙ ---
                     
             except Exception as e:
-                trick_just_scored = False
-                last_scored_pose = "other"
                 pass 
             
             # --- Отрисовка ---
@@ -164,7 +167,7 @@ def process_video(video_file):
         # --- КНОПКА СКАЧИВАНИЯ ---
         report_text = f"""
         ==================================
-        ФИНАЛЬНЫЙ ПРОТОКОЛ АНАЛИЗА (ИИ-МОДЕЛЬ v2)
+        ФИНАЛЬНЫЙ ПРОТОКОЛ АНАЛИЗА (ИИ-МОДЕЛЬ v3)
         ==================================
         
         Итоговый счет: {total_score} баллов
@@ -185,17 +188,13 @@ def process_video(video_file):
         st.download_button(
             label="⬇️ Скачать протокол (.txt)",
             data=report_text,
-            file_name="gymnastics_report_AI_v2.txt",
+            file_name="gymnastics_report_AI_v3.txt",
             mime="text/plain"
         )
 
 # --- 3. КОД "САЙТА" (Streamlit) ---
 st.set_page_config(layout="wide")
 st.title("🤖 ИИ-Анализатор художественной гимнастики")
-
-# --- УБРАЛИ БОКОВУЮ ПАНЕЛЬ (SIDEBAR) ---
-# (Она больше не нужна)
-# --- КОНЕЦ УДАЛЕНИЯ ---
 
 st.write("Загрузите видео с выступлением, и ИИ-модель оценит трюки.")
 
@@ -206,8 +205,4 @@ if uploaded_file is not None:
     
     if st.button("Начать анализ"):
         st.info("Идет обработка... Это может занять некоторое время.")
-        
-        # --- ИСПРАВЛЕННЫЙ ВЫЗОВ ФУНКЦИИ ---
-        # (Мы больше не передаем 'settings')
-        process_video(uploaded_file.read()) 
-        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+        process_video(uploaded_file.read())
