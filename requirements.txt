@@ -3,3 +3,5 @@ opencv-python-headless
 mediapipe
 numpy
 Pillow
+scikit-learn
+joblib
