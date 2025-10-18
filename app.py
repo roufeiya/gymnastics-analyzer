@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 from PIL import ImageFont, ImageDraw, Image
-import joblib # <-- ИМПОРТ ДЛЯ ЗАГРУЗКИ "МОЗГА"
+import joblib 
 
 # --- 1. ЗАГРУЗКА РЕСУРСОВ ---
 
@@ -18,7 +18,7 @@ try:
     model = joblib.load('gymnastics_model.pkl')
 except FileNotFoundError:
     st.error("ОШИБКА: Файл 'gymnastics_model.pkl' не найден! Убедитесь, что вы загрузили его на GitHub.")
-    st.stop() # Останавливаем приложение, если "мозг" не найден
+    st.stop() 
 
 # --- Инициализация MediaPipe ---
 mp_pose = mp.solutions.pose
@@ -29,22 +29,24 @@ def format_time(milliseconds):
     seconds = total_seconds % 60
     return f"{minutes:02d}:{seconds:02d}"
 
-# --- 2. НАША ГЛАВНАЯ ФУНКЦИЯ ОБРАБОТКИ (полностью новая логика) ---
-def process_video(video_file, settings):
-    
-    # --- Настройки ---
-    FRAMES_TO_HOLD = settings["hold_frames"]
+# --- 2. НАША ГЛАВНАЯ ФУНКЦИЯ ОБРАБОТКИ (УБРАЛИ УДЕРЖАНИЕ) ---
+def process_video(video_file): # Убрали settings, т.к. hold_frames не нужен
     
     # --- Переменные ---
     total_score = 0
     protocol_entries = [] 
     
-    # Флаги и счетчики кадров (как раньше)
-    current_pose = "other"
-    previous_pose = "other"
-    pose_hold_frames = 0
+    # --- УБРАЛИ ФЛАГИ И СЧЕТЧИКИ УДЕРЖАНИЯ ---
+    # current_pose = "other" # Больше не нужно отслеживать предыдущую позу
+    # previous_pose = "other"
+    # pose_hold_frames = 0
+    # --- КОНЕЦ УДАЛЕНИЯ ---
     
-    # Очки за трюки (теперь в одном месте)
+    # Флаг, чтобы не давать баллы за один и тот же трюк несколько кадров подряд
+    trick_just_scored = False 
+    last_scored_pose = "other"
+
+    # Очки за трюки
     SCORES = {
         "arabesque": 8,
         "leg_lift": 5,
@@ -60,7 +62,13 @@ def process_video(video_file, settings):
         "other": ""
     }
     
-    cap = cv2.VideoCapture(video_file)
+    # --- Читаем видео из байтов, переданных Streamlit ---
+    tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tfile.write(video_file)
+    video_path = tfile.name
+    # --- Конец чтения ---
+    
+    cap = cv2.VideoCapture(video_path)
     
     # Индикатор выполнения
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -78,7 +86,11 @@ def process_video(video_file, settings):
                 
             # Обновляем индикатор
             current_frame += 1
-            progress_percent = int((current_frame / total_frames) * 100)
+            # Проверка деления на ноль, если total_frames = 0
+            if total_frames > 0:
+                progress_percent = int((current_frame / total_frames) * 100)
+            else:
+                progress_percent = 0
             progress_text.text(f"Идет обработка... Кадр {current_frame}/{total_frames} ({progress_percent}%)")
             progress_bar.progress(progress_percent)
             
@@ -92,58 +104,49 @@ def process_video(video_file, settings):
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             
             trick_text = ""
+            current_pose = "other" # По умолчанию - 'other'
 
             try:
                 landmarks = results.pose_landmarks.landmark
                 
                 # --- 1. ПРЕВРАЩАЕМ СКЕЛЕТ В "ОТПЕЧАТОК" ---
-                # (Точно так же, как в train_model.py)
                 pose_landmarks_list = []
                 for landmark in landmarks:
                     pose_landmarks_list.extend([landmark.x, landmark.y, landmark.z])
 
                 # --- 2. "МОЗГ" ДЕЛАЕТ ПРЕДСКАЗАНИЕ ---
-                # Мы "спрашиваем" ИИ: "На что похожа эта поза?"
-                # model.predict() ожидает 2D-массив, поэтому [pose_landmarks_list]
                 prediction = model.predict([pose_landmarks_list])
-                current_pose = prediction[0] # (Берем первый ответ, т.к. он один)
+                current_pose = prediction[0] 
                 
-                # --- 3. ЛОГИКА ОЦЕНКИ (на основе предсказания) ---
+                # --- 3. ИЗМЕНЕННАЯ ЛОГИКА ОЦЕНКИ (Без удержания) ---
                 
                 if current_pose != "other":
                     # Если ИИ увидел трюк
                     
-                    if current_pose == previous_pose:
-                        # Мы все еще в той же позе, продолжаем считать кадры
-                        pose_hold_frames += 1
+                    # Проверяем, не тот ли это трюк, за который мы ТОЛЬКО ЧТО дали балл
+                    if not trick_just_scored or current_pose != last_scored_pose:
+                        score = SCORES[current_pose]
+                        label = POSE_NAMES_RU[current_pose]
                         
-                        trick_text = f"{POSE_NAMES_RU[current_pose]}! (Держать... {pose_hold_frames}/{FRAMES_TO_HOLD})"
+                        total_score += score
+                        trick_text = f"{label}! +{score} БАЛЛОВ"
+                        protocol_entries.append(f"{current_time_str} - {label} (+{score}б)")
                         
-                        if pose_hold_frames == FRAMES_TO_HOLD:
-                            # Ура! Мы продержали позу достаточно долго!
-                            score = SCORES[current_pose]
-                            label = POSE_NAMES_RU[current_pose]
-                            
-                            total_score += score
-                            trick_text = f"{label}! +{score} БАЛЛОВ"
-                            protocol_entries.append(f"{current_time_str} - {label} (+{score}б)")
-                    else:
-                        # Это новый трюк, сбрасываем счетчик
-                        pose_hold_frames = 1
-                        previous_pose = current_pose
+                        trick_just_scored = True # Ставим флаг, что балл начислен
+                        last_scored_pose = current_pose
                 else:
-                    # Если ИИ увидел "other", сбрасываем все
-                    pose_hold_frames = 0
-                    previous_pose = "other"
+                    # Если ИИ увидел "other", сбрасываем флаг
+                    trick_just_scored = False
+                    last_scored_pose = "other"
                     
             except Exception as e:
                 # Если "скелет" не найден, сбрасываем
-                pose_hold_frames = 0
-                previous_pose = "other"
+                trick_just_scored = False
+                last_scored_pose = "other"
                 pass 
             
             # --- Отрисовка ---
-            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_image)
             
@@ -175,7 +178,7 @@ def process_video(video_file, settings):
         # --- КНОПКА СКАЧИВАНИЯ ---
         report_text = f"""
         ==================================
-        ФИНАЛЬНЫЙ ПРОТОКОЛ АНАЛИЗА (ИИ-МОДЕЛЬ)
+        ФИНАЛЬНЫЙ ПРОТОКОЛ АНАЛИЗА (ИИ-МОДЕЛЬ v2)
         ==================================
         
         Итоговый счет: {total_score} баллов
@@ -191,14 +194,12 @@ def process_video(video_file, settings):
         report_text += f"""
         
         ==================================
-        --- Настройки анализа ---
-        Время удержания:   {settings["hold_frames"]} кадров
         """
         
         st.download_button(
             label="⬇️ Скачать протокол (.txt)",
             data=report_text,
-            file_name="gymnastics_report_AI.txt",
+            file_name="gymnastics_report_AI_v2.txt",
             mime="text/plain"
         )
 
@@ -206,19 +207,16 @@ def process_video(video_file, settings):
 st.set_page_config(layout="wide")
 st.title("🤖 ИИ-Анализатор художественной гимнастики")
 
-st.sidebar.title("Панель Управления Судьи")
-st.sidebar.write("Настройте сложность анализа:")
-
-# (Мы убрали старые ползунки для углов, т.к. ИИ они не нужны)
-hold_frames = st.sidebar.slider(
-    "Время удержания позы (кадры):", 
-    min_value=5, max_value=60, value=10
-)
-
-# Собираем настройки
+# --- УБРАЛИ ПОЛЗУНКИ СЛОЖНОСТИ (кроме времени) ---
+st.sidebar.title("Настройки") 
+# hold_frames = st.sidebar.slider( # Оставляем пока, вдруг пригодится
+#     "Мин. кадров для удержания (сейчас не используется):", 
+#     min_value=1, max_value=60, value=5 
+# )
 settings = {
-    "hold_frames": hold_frames,
+     "hold_frames": 1 # Просто ставим 1 кадр
 }
+# --- КОНЕЦ УДАЛЕНИЯ ---
 
 st.write("Загрузите видео с выступлением, и ИИ-модель оценит трюки.")
 
@@ -229,4 +227,5 @@ if uploaded_file is not None:
     
     if st.button("Начать анализ"):
         st.info("Идет обработка... Это может занять некоторое время.")
+        # Передаем байты файла напрямую
         process_video(uploaded_file.read(), settings)
