@@ -6,7 +6,9 @@ import mediapipe as mp
 from PIL import ImageFont, ImageDraw, Image
 
 # --- ПУТЬ К ШРИФТУ ---
-FONT_PATH = 'Verdana.ttf' # Ищем шрифт в той же папке
+# Ищем ТОЧНОЕ имя файла, которое вы загрузили
+FONT_PATH = 'ВЕРДАНА.ТТФ' 
+# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
 font_trick = ImageFont.truetype(FONT_PATH, 36)
 font_score = ImageFont.truetype(FONT_PATH, 30)
@@ -293,9 +295,7 @@ settings = {
 
 st.write("Загрузите видео с выступлением, и нейросеть оценит трюки.")
 
-# --- ИСПРАВЛЕННАЯ СТРОКА ---
 uploaded_file = st.file_uploader("Выберите видео-файл", type=["mp4", "mov", "avi"])
-# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
 if uploaded_file is not None:
     st.video(uploaded_file)
