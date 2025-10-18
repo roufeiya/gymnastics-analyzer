@@ -7,7 +7,7 @@ from PIL import ImageFont, ImageDraw, Image
 
 # --- ПУТЬ К ШРИФТУ ---
 # Ищем ТОЧНОЕ имя файла, которое вы загрузили
-FONT_PATH = 'ВЕРДАНА.ТТФ' 
+FONT_PATH = 'VERDANA.TTF' 
 # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
 font_trick = ImageFont.truetype(FONT_PATH, 36)
